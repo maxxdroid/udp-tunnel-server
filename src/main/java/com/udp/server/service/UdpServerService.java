@@ -5,10 +5,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
 import java.io.*;
-import java.net.DatagramPacket;
-import java.net.DatagramSocket;
-import java.net.HttpURLConnection;
-import java.net.URL;
+import java.net.*;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -21,6 +18,7 @@ public class UdpServerService {
     @PostConstruct
     public void start() {
         new Thread(() -> {
+            log.info(" UDP Server starting on port {}...", PORT);
             try (DatagramSocket socket = new DatagramSocket(PORT)) {
                 byte[] buffer = new byte[8192];
 
@@ -28,18 +26,24 @@ public class UdpServerService {
                     DatagramPacket packet = new DatagramPacket(buffer, buffer.length);
                     socket.receive(packet);
 
+                    InetAddress clientAddress = packet.getAddress();
+                    int clientPort = packet.getPort();
+
                     String received = new String(packet.getData(), 0, packet.getLength());
+                    log.info("📥 Received packet from {}:{}\n---\n{}\n---", clientAddress, clientPort, received);
+
                     String response = handleRequest(received);
 
                     byte[] responseBytes = response.getBytes();
                     DatagramPacket responsePacket = new DatagramPacket(
-                            responseBytes, responseBytes.length,
-                            packet.getAddress(), packet.getPort()
+                            responseBytes, responseBytes.length, clientAddress, clientPort
                     );
                     socket.send(responsePacket);
+                    log.info("Sent response to {}:{}\n---\n{}\n---", clientAddress, clientPort, response);
                 }
+
             } catch (Exception e) {
-                log.error("Error : {} \n Cause {}", e.getMessage(), e.getCause().getMessage());
+                log.error("Server Error: {}", e.getMessage(), e);
             }
         }).start();
     }
@@ -50,7 +54,10 @@ public class UdpServerService {
 
             // Parse method + URL
             String line = reader.readLine();
-            if (line == null || !line.contains(" ")) return "Invalid request line";
+            if (line == null || !line.contains(" ")) {
+                log.warn("Invalid request line: '{}'", line);
+                return "Invalid request line";
+            }
 
             String[] parts = line.split(" ", 2);
             String method = parts[0].trim();
@@ -76,16 +83,18 @@ public class UdpServerService {
             }
             String body = bodyBuilder.toString().trim();
 
+            log.debug("Parsed request: \nMethod: {}\nURL: {}\nHeaders: {}\nBody: {}", method, url, headers, body);
             return forwardHttpRequest(method, url, headers, body);
 
         } catch (Exception e) {
-            log.error("Handling Request Error: {}", e.getMessage());
-            return "❌ Error parsing request: " + e.getMessage();
+            log.error("Error while handling request: {}", e.getMessage(), e);
+            return "Error parsing request: " + e.getMessage();
         }
     }
 
     private String forwardHttpRequest(String method, String url, Map<String, String> headers, String body) {
         try {
+            log.info("🌐 Forwarding HTTP request: {} {}", method, url);
             HttpURLConnection connection = (HttpURLConnection) new URL(url).openConnection();
             connection.setRequestMethod(method);
             connection.setConnectTimeout(5000);
@@ -95,12 +104,13 @@ public class UdpServerService {
                 connection.setRequestProperty(entry.getKey(), entry.getValue());
             }
 
-            if (!body.isEmpty() && (method.equals("POST") || method.equals("PUT") || method.equals("PATCH"))) {
+            if (!body.isEmpty() && (method.equalsIgnoreCase("POST") || method.equalsIgnoreCase("PUT") || method.equalsIgnoreCase("PATCH"))) {
                 connection.setDoOutput(true);
                 try (OutputStream os = connection.getOutputStream()) {
                     os.write(body.getBytes());
                     os.flush();
                 }
+                log.debug("Sent body: {}", body);
             }
 
             int status = connection.getResponseCode();
@@ -113,11 +123,13 @@ public class UdpServerService {
                 response.append(line).append("\n");
             }
             in.close();
+
+            log.info("HTTP response status: {}", status);
             return response.toString().trim();
 
         } catch (Exception e) {
-            log.error("Fording Request Error : {}", e.getMessage());
-            return "❌ HTTP request failed: " + e.getMessage();
+            log.error("HTTP forwarding error: {}", e.getMessage(), e);
+            return "HTTP request failed: " + e.getMessage();
         }
     }
 }
