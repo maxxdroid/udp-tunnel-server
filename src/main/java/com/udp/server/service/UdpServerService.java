@@ -6,6 +6,7 @@ import org.springframework.stereotype.Service;
 
 import java.io.*;
 import java.net.*;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -18,7 +19,7 @@ public class UdpServerService {
     @PostConstruct
     public void start() {
         new Thread(() -> {
-            log.info(" UDP Server starting on port {}...", PORT);
+            log.info("🟢 UDP Server starting on port {}...", PORT);
             try (DatagramSocket socket = new DatagramSocket(PORT)) {
                 byte[] buffer = new byte[8192];
 
@@ -34,16 +35,32 @@ public class UdpServerService {
 
                     String response = handleRequest(received);
 
-                    byte[] responseBytes = response.getBytes();
-                    DatagramPacket responsePacket = new DatagramPacket(
-                            responseBytes, responseBytes.length, clientAddress, clientPort
-                    );
-                    socket.send(responsePacket);
-                    log.info("Sent response to {}:{}\n---\n{}\n---", clientAddress, clientPort, response);
+                    // Chunking logic
+                    byte[] data = response.getBytes();
+                    int chunkSize = 1200;
+                    int totalChunks = (int) Math.ceil((double) data.length / chunkSize);
+
+                    for (int i = 0; i < totalChunks; i++) {
+                        int start = i * chunkSize;
+                        int end = Math.min(data.length, start + chunkSize);
+                        byte[] chunk = Arrays.copyOfRange(data, start, end);
+
+                        String header = String.format("[CHUNK %d/%d]\n", i + 1, totalChunks);
+                        byte[] headerBytes = header.getBytes();
+                        byte[] packetData = new byte[headerBytes.length + chunk.length];
+
+                        System.arraycopy(headerBytes, 0, packetData, 0, headerBytes.length);
+                        System.arraycopy(chunk, 0, packetData, headerBytes.length, chunk.length);
+
+                        DatagramPacket responsePacket = new DatagramPacket(packetData, packetData.length, clientAddress, clientPort);
+                        socket.send(responsePacket);
+
+                        log.debug("🔹 Sent chunk {}/{}", i + 1, totalChunks);
+                    }
                 }
 
             } catch (Exception e) {
-                log.error("Server Error: {}", e.getMessage(), e);
+                log.error("❌ Server Error: {}", e.getMessage(), e);
             }
         }).start();
     }
@@ -55,7 +72,7 @@ public class UdpServerService {
             // Parse method + URL
             String line = reader.readLine();
             if (line == null || !line.contains(" ")) {
-                log.warn("Invalid request line: '{}'", line);
+                log.warn("⚠️ Invalid request line: '{}'", line);
                 return "Invalid request line";
             }
 
@@ -83,11 +100,11 @@ public class UdpServerService {
             }
             String body = bodyBuilder.toString().trim();
 
-            log.debug("Parsed request: \nMethod: {}\nURL: {}\nHeaders: {}\nBody: {}", method, url, headers, body);
+            log.debug("📤 Parsed request: \nMethod: {}\nURL: {}\nHeaders: {}\nBody: {}", method, url, headers, body);
             return forwardHttpRequest(method, url, headers, body);
 
         } catch (Exception e) {
-            log.error("Error while handling request: {}", e.getMessage(), e);
+            log.error("❌ Error while handling request: {}", e.getMessage(), e);
             return "Error parsing request: " + e.getMessage();
         }
     }
@@ -110,7 +127,7 @@ public class UdpServerService {
                     os.write(body.getBytes());
                     os.flush();
                 }
-                log.debug("Sent body: {}", body);
+                log.debug("📦 Sent body: {}", body);
             }
 
             int status = connection.getResponseCode();
@@ -124,11 +141,11 @@ public class UdpServerService {
             }
             in.close();
 
-            log.info("HTTP response status: {}", status);
+            log.info("✅ HTTP response status: {}", status);
             return response.toString().trim();
 
         } catch (Exception e) {
-            log.error("HTTP forwarding error: {}", e.getMessage(), e);
+            log.error("❌ HTTP forwarding error: {}", e.getMessage(), e);
             return "HTTP request failed: " + e.getMessage();
         }
     }
