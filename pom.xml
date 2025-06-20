@@ -12,7 +12,7 @@
 	<artifactId>server</artifactId>
 	<version>0.0.1-SNAPSHOT</version>
 	<name>server</name>
-	<description>A springboot Udp server</description>
+	<description>A spring boot Udp server</description>
 	<url/>
 	<licenses>
 		<license/>
