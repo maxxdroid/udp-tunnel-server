@@ -5,7 +5,7 @@ FROM eclipse-temurin:17-jdk-jammy
 WORKDIR /app
 
 # Copy the packaged JAR into the image
-COPY target/udp-tunnel-server-1.0.0.jar app.jar
+COPY target/server-1.0.0.jar app.jar
 
 # Expose UDP port
 EXPOSE 9050/udp
