@@ -1,14 +1,14 @@
 # Use a lightweight JDK base image
 FROM eclipse-temurin:17-jdk-jammy
 
-# Set working directory
+# Set working directory inside the container
 WORKDIR /app
 
-# Copy the packaged JAR into the image
-COPY target/server-1.0.0.jar app.jar
+# Copy the JAR from the Maven target folder
+COPY target/server-0.0.1-SNAPSHOT.jar app.jar
 
-# Expose UDP port
+# Expose UDP port (the tunnel port)
 EXPOSE 9050/udp
 
-# Run the app
+# Command to run the Spring Boot UDP server
 ENTRYPOINT ["java", "-jar", "app.jar"]
